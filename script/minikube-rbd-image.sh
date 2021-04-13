@@ -1,7 +1,5 @@
 #!/bin/bash
 
-PRIMARY_CLUSTER="${PRIMARY_CLUSTER:-minicluster1}"
-SECONDARY_CLUSTER="${SECONDARY_CLUSTER:-minicluster2}"
 STORAGECLASS_NAME="rook-ceph-block"
 PVC_NAME="rbd-pvc"
 
@@ -42,8 +40,9 @@ EOF
 
 if ! kubectl --context="${PRIMARY_CLUSTER}" get pvc/"${PVC_NAME}" | grep -q "Bound"
 then
-    echo "PVC isn't Bound"
-    exit 1
+  sleep 1m
+  PRIMARY_CLUSTER="${PRIMARY_CLUSTER}" SECONDARY_CLUSTER="${SECONDARY_CLUSTER}" ./script/minikube-mirroring.sh
+  PRIMARY_CLUSTER="${PRIMARY_CLUSTER}" SECONDARY_CLUSTER="${SECONDARY_CLUSTER}" ./script/minikube-rbd-image.sh
 fi
 
 RBD_IMAGE_NAME=$(kubectl --context="${PRIMARY_CLUSTER}" get pv/$(kubectl --context="${PRIMARY_CLUSTER}" get pvc/"${PVC_NAME}" -o jsonpath='{.spec.volumeName}') -o jsonpath='{.spec.csi.volumeAttributes.imageName}')
@@ -57,6 +56,3 @@ kubectl --context="${PRIMARY_CLUSTER}" -n rook-ceph exec ${CEPH_TOOLBOX_POD} -- 
 kubectl --context="${PRIMARY_CLUSTER}" -n rook-ceph exec ${CEPH_TOOLBOX_POD} -- rbd info "${RBD_IMAGE_NAME}" --pool=replicapool
 
 CEPH_TOOLBOX_POD=$(kubectl --context="${SECONDARY_CLUSTER}" -n rook-ceph get pods -l  app=rook-ceph-tools -o jsonpath='{.items[0].metadata.name}')
-echo CEPH_TOOLBOX_POD on secondary cluster is $CEPH_TOOLBOX_POD
-
-kubectl --context="${SECONDARY_CLUSTER}" -n rook-ceph exec ${CEPH_TOOLBOX_POD} -- rbd info "${RBD_IMAGE_NAME}" --pool=replicapool
